@@ -1,0 +1,1284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Virtual Desktop Browser</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .auth-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(10px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .auth-modal {
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(30px);
+            border-radius: 20px;
+            padding: 40px;
+            width: 400px;
+            max-width: 90vw;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            text-align: center;
+        }
+
+        .auth-modal h2 {
+            color: white;
+            margin-bottom: 24px;
+            font-size: 28px;
+        }
+
+        .auth-form {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .auth-input {
+            padding: 12px 16px;
+            border-radius: 12px;
+            border: none;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            font-size: 16px;
+        }
+
+        .auth-input::placeholder {
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        .auth-input:focus {
+            outline: 2px solid rgba(255, 255, 255, 0.5);
+            background: rgba(255, 255, 255, 0.25);
+        }
+
+        .auth-btn {
+            padding: 12px 24px;
+            border-radius: 12px;
+            border: none;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .auth-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+        }
+
+        .auth-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .auth-switch {
+            color: rgba(255, 255, 255, 0.8);
+            margin-top: 16px;
+        }
+
+        .auth-switch button {
+            background: none;
+            border: none;
+            color: white;
+            text-decoration: underline;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .error-message {
+            color: #ff6b6b;
+            background: rgba(255, 107, 107, 0.1);
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 14px;
+            margin-bottom: 16px;
+        }
+
+        .desktop {
+            display: flex;
+            height: 100vh;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(20px);
+            border-radius: 12px;
+            margin: 8px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        }
+
+        .dock {
+            width: 80px;
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(30px);
+            border-radius: 12px 0 0 12px;
+            padding: 20px 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
+            border-right: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .user-profile {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 18px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            position: relative;
+        }
+
+        .user-menu {
+            position: absolute;
+            left: 60px;
+            top: 0;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            border-radius: 12px;
+            padding: 12px 0;
+            min-width: 150px;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
+            display: none;
+            z-index: 100;
+        }
+
+        .user-menu.show {
+            display: block;
+        }
+
+        .user-menu button {
+            width: 100%;
+            padding: 8px 16px;
+            border: none;
+            background: none;
+            text-align: left;
+            cursor: pointer;
+            color: #333;
+            font-size: 14px;
+        }
+
+        .user-menu button:hover {
+            background: rgba(0, 0, 0, 0.1);
+        }
+
+        .app-icon {
+            width: 50px;
+            height: 50px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid transparent;
+            font-size: 24px;
+            position: relative;
+        }
+
+        .app-icon:hover {
+            transform: translateY(-3px);
+            background: rgba(255, 255, 255, 0.2);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+        }
+
+        .app-icon.active {
+            background: rgba(255, 255, 255, 0.3);
+            border-color: rgba(255, 255, 255, 0.5);
+            transform: scale(1.05);
+        }
+
+        .app-icon.active::after {
+            content: '';
+            position: absolute;
+            right: -15px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 4px;
+            height: 30px;
+            background: #fff;
+            border-radius: 2px;
+        }
+
+        .settings-icon {
+            margin-top: auto;
+            width: 40px;
+            height: 40px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 20px;
+            transition: all 0.3s ease;
+        }
+
+        .settings-icon:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: rotate(90deg);
+        }
+
+        .workspace {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .tab-bar {
+            height: 50px;
+            background: rgba(255, 255, 255, 0.1);
+            display: flex;
+            align-items: center;
+            padding: 0 16px;
+            gap: 8px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            overflow-x: auto;
+        }
+
+        .tab {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+            min-width: 120px;
+            border: 1px solid transparent;
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 13px;
+        }
+
+        .tab:hover {
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        .tab.active {
+            background: rgba(255, 255, 255, 0.25);
+            border-color: rgba(255, 255, 255, 0.3);
+            color: white;
+        }
+
+        .tab-close {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            transition: all 0.2s ease;
+        }
+
+        .tab-close:hover {
+            background: rgba(255, 100, 100, 0.8);
+        }
+
+        .new-tab-btn {
+            width: 32px;
+            height: 32px;
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.15);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 18px;
+        }
+
+        .new-tab-btn:hover {
+            background: rgba(255, 255, 255, 0.25);
+            color: white;
+        }
+
+        .content-area {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .iframe-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: white;
+            border-radius: 0 0 12px 0;
+            overflow: hidden;
+            display: none;
+        }
+
+        .iframe-container.active {
+            display: block;
+        }
+
+        .iframe-container iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+
+        .welcome-screen {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: white;
+            text-align: center;
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .welcome-screen h2 {
+            font-size: 32px;
+            margin-bottom: 16px;
+            opacity: 0.9;
+        }
+
+        .welcome-screen p {
+            font-size: 18px;
+            opacity: 0.7;
+            max-width: 400px;
+        }
+
+        .url-bar {
+            height: 40px;
+            background: rgba(255, 255, 255, 0.1);
+            display: flex;
+            align-items: center;
+            padding: 0 16px;
+            gap: 12px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .url-input {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.15);
+            border: none;
+            border-radius: 20px;
+            padding: 8px 16px;
+            color: white;
+            font-size: 13px;
+        }
+
+        .url-input::placeholder {
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        .url-input:focus {
+            outline: 2px solid rgba(255, 255, 255, 0.3);
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .nav-btn {
+            width: 28px;
+            height: 28px;
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.15);
+            border: none;
+            color: rgba(255, 255, 255, 0.8);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+        }
+
+        .nav-btn:hover {
+            background: rgba(255, 255, 255, 0.25);
+            color: white;
+        }
+
+        .nav-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .settings-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(10px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .settings-content {
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(30px);
+            border-radius: 20px;
+            padding: 30px;
+            width: 600px;
+            max-width: 90vw;
+            max-height: 80vh;
+            overflow-y: auto;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .settings-content h3 {
+            color: white;
+            margin-bottom: 20px;
+            font-size: 24px;
+        }
+
+        .app-settings {
+            display: grid;
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .app-setting {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+        }
+
+        .app-setting span {
+            color: white;
+            min-width: 80px;
+            font-size: 20px;
+        }
+
+        .app-setting input {
+            flex: 1;
+            padding: 8px 12px;
+            border-radius: 8px;
+            border: none;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            font-size: 14px;
+        }
+
+        .app-setting input::placeholder {
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        .settings-actions {
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border-radius: 10px;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        .sync-status {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 8px 16px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            border-radius: 20px;
+            font-size: 12px;
+            z-index: 100;
+            display: none;
+        }
+
+        .sync-status.show {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <!-- Authentication Overlay -->
+    <div class="auth-overlay" id="authOverlay">
+        <div class="auth-modal">
+            <h2 id="authTitle">Welcome to Virtual Desktop</h2>
+            <div id="authError" class="error-message" style="display: none;"></div>
+            <form class="auth-form" id="authForm">
+                <input type="email" id="emailInput" class="auth-input" placeholder="Email" required>
+                <input type="password" id="passwordInput" class="auth-input" placeholder="Password" required>
+                <button type="submit" class="auth-btn" id="authSubmitBtn">Sign In</button>
+            </form>
+            <div class="auth-switch">
+                <span id="authSwitchText">Don't have an account?</span>
+                <button type="button" id="authSwitchBtn">Sign Up</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sync Status -->
+    <div class="sync-status" id="syncStatus">Syncing...</div>
+
+    <!-- Main Desktop -->
+    <div class="desktop" id="desktop" style="display: none;">
+        <div class="dock" id="dock">
+            <div class="user-profile" id="userProfile">
+                <span id="userInitial">U</span>
+                <div class="user-menu" id="userMenu">
+                    <button onclick="virtualDesktop.exportSettings()">Export Settings</button>
+                    <button onclick="document.getElementById('importFile').click()">Import Settings</button>
+                    <button onclick="virtualDesktop.signOut()">Sign Out</button>
+                </div>
+            </div>
+            <input type="file" id="importFile" accept=".json" style="display: none;">
+            <!-- Apps will be added here dynamically -->
+            <div class="settings-icon" id="settingsIcon">⚙️</div>
+        </div>
+        
+        <div class="workspace">
+            <div class="tab-bar" id="tabBar">
+                <button class="new-tab-btn" id="newTabBtn">+</button>
+            </div>
+            
+            <div class="url-bar">
+                <button class="nav-btn" id="backBtn">←</button>
+                <button class="nav-btn" id="forwardBtn">→</button>
+                <button class="nav-btn" id="refreshBtn">↻</button>
+                <input type="text" class="url-input" id="urlInput" placeholder="Enter URL or search...">
+            </div>
+            
+            <div class="content-area" id="contentArea">
+                <div class="welcome-screen">
+                    <h2>Welcome to Virtual Desktop</h2>
+                    <p>Select an app from the dock to get started, or create a new tab to browse the web</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div class="settings-modal" id="settingsModal">
+        <div class="settings-content">
+            <h3>Customize Your Apps</h3>
+            <div class="app-settings" id="appSettings">
+                <!-- App settings will be generated here -->
+            </div>
+            <div class="settings-actions">
+                <button class="btn btn-secondary" onclick="virtualDesktop.closeSettings()">Cancel</button>
+                <button class="btn btn-primary" onclick="virtualDesktop.saveSettings()">Save Changes</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Replace these with your actual Supabase credentials
+        const SUPABASE_URL = 'https://tcefcsbuvkwbgjljslfc.supabase.co'; // Replace with your Project URL
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRjZWZjc2J1dmt3YmdqbGpzbGZjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY0MzQzOTcsImV4cCI6MjA3MjAxMDM5N30.SdbkfHo5oyA6PeBKtbAiUEBhjMtPvSrrQkjQgWvEboQ'; // Replace with your Anon Key
+
+        // Initialize Supabase client
+        const supabase = supabase.createClient ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+
+        class VirtualDesktop {
+            constructor() {
+                this.apps = new Map();
+                this.currentApp = null;
+                this.tabCounter = 0;
+                this.user = null;
+                this.isSignUp = false;
+                this.saveTimeout = null;
+
+                this.initializeAuth();
+                this.bindEvents();
+            }
+
+            async initializeAuth() {
+                if (!supabase) {
+                    console.warn('Supabase not configured - running in offline mode');
+                    this.loadOfflineMode();
+                    return;
+                }
+
+                // Check if user is already logged in
+                const { data: { session } } = await supabase.auth.getSession();
+                
+                if (session) {
+                    this.user = session.user;
+                    await this.loadUserData();
+                    this.showDesktop();
+                } else {
+                    this.showAuth();
+                }
+
+                // Listen for auth state changes
+                supabase.auth.onAuthStateChange(async (event, session) => {
+                    if (event === 'SIGNED_IN') {
+                        this.user = session.user;
+                        await this.loadUserData();
+                        this.showDesktop();
+                    } else if (event === 'SIGNED_OUT') {
+                        this.user = null;
+                        this.showAuth();
+                    }
+                });
+            }
+
+            loadOfflineMode() {
+                this.initializeApps();
+                this.loadLocalData();
+                this.showDesktop();
+                document.getElementById('authOverlay').style.display = 'none';
+            }
+
+            showAuth() {
+                document.getElementById('authOverlay').style.display = 'flex';
+                document.getElementById('desktop').style.display = 'none';
+            }
+
+            showDesktop() {
+                document.getElementById('authOverlay').style.display = 'none';
+                document.getElementById('desktop').style.display = 'flex';
+                
+                if (this.user) {
+                    const initial = this.user.email.charAt(0).toUpperCase();
+                    document.getElementById('userInitial').textContent = initial;
+                }
+                
+                if (this.apps.size === 0) {
+                    this.initializeApps();
+                }
+            }
+
+            bindEvents() {
+                // Auth form submission
+                document.getElementById('authForm').addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    this.handleAuth();
+                });
+
+                // Switch between sign in/up
+                document.getElementById('authSwitchBtn').addEventListener('click', () => {
+                    this.isSignUp = !this.isSignUp;
+                    this.updateAuthUI();
+                });
+
+                // User menu toggle
+                document.getElementById('userProfile').addEventListener('click', () => {
+                    const menu = document.getElementById('userMenu');
+                    menu.classList.toggle('show');
+                });
+
+                // Close user menu when clicking outside
+                document.addEventListener('click', (e) => {
+                    const profile = document.getElementById('userProfile');
+                    const menu = document.getElementById('userMenu');
+                    if (!profile.contains(e.target) && !menu.contains(e.target)) {
+                        menu.classList.remove('show');
+                    }
+                });
+
+                // Settings
+                document.getElementById('settingsIcon').addEventListener('click', () => {
+                    this.openSettings();
+                });
+
+                // Import file handler
+                document.getElementById('importFile').addEventListener('change', (e) => {
+                    this.importSettings(e);
+                });
+
+                // Tab and navigation events
+                document.getElementById('newTabBtn').addEventListener('click', () => {
+                    if (this.currentApp) {
+                        this.createTab(this.currentApp);
+                    } else {
+                        this.createTab('browser');
+                    }
+                });
+
+                document.getElementById('urlInput').addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        this.navigateToUrl(e.target.value);
+                    }
+                });
+
+                document.getElementById('backBtn').addEventListener('click', () => this.navigateBack());
+                document.getElementById('forwardBtn').addEventListener('click', () => this.navigateForward());
+                document.getElementById('refreshBtn').addEventListener('click', () => this.refresh());
+            }
+
+            updateAuthUI() {
+                const title = document.getElementById('authTitle');
+                const submitBtn = document.getElementById('authSubmitBtn');
+                const switchText = document.getElementById('authSwitchText');
+                const switchBtn = document.getElementById('authSwitchBtn');
+
+                if (this.isSignUp) {
+                    title.textContent = 'Create Account';
+                    submitBtn.textContent = 'Sign Up';
+                    switchText.textContent = 'Already have an account?';
+                    switchBtn.textContent = 'Sign In';
+                } else {
+                    title.textContent = 'Welcome Back';
+                    submitBtn.textContent = 'Sign In';
+                    switchText.textContent = "Don't have an account?";
+                    switchBtn.textContent = 'Sign Up';
+                }
+            }
+
+            async handleAuth() {
+                if (!supabase) return;
+
+                const email = document.getElementById('emailInput').value;
+                const password = document.getElementById('passwordInput').value;
+                const submitBtn = document.getElementById('authSubmitBtn');
+                const errorDiv = document.getElementById('authError');
+
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Processing...';
+                errorDiv.style.display = 'none';
+
+                try {
+                    let result;
+                    if (this.isSignUp) {
+                        result = await supabase.auth.signUp({ email, password });
+                    } else {
+                        result = await supabase.auth.signInWithPassword({ email, password });
+                    }
+
+                    if (result.error) {
+                        throw result.error;
+                    }
+
+                    if (this.isSignUp && !result.data.session) {
+                        // Email confirmation required
+                        errorDiv.textContent = 'Please check your email to confirm your account';
+                        errorDiv.style.display = 'block';
+                    }
+                } catch (error) {
+                    errorDiv.textContent = error.message;
+                    errorDiv.style.display = 'block';
+                } finally {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = this.isSignUp ? 'Sign Up' : 'Sign In';
+                }
+            }
+
+            async signOut() {
+                if (supabase) {
+                    await supabase.auth.signOut();
+                } else {
+                    // Offline mode - just reload
+                    location.reload();
+                }
+            }
+
+            initializeApps() {
+                const defaultApps = [
+                    { id: 'facebook', name: 'Facebook', icon: '📘', defaultUrl: 'https://facebook.com' },
+                    { id: 'gmail', name: 'Gmail', icon: '✉️', defaultUrl: 'https://mail.google.com' },
+                    { id: 'youtube', name: 'YouTube', icon: '📺', defaultUrl: 'https://youtube.com' },
+                    { id: 'twitter', name: 'Twitter', icon: '🐦', defaultUrl: 'https://twitter.com' },
+                    { id: 'github', name: 'GitHub', icon: '🐱', defaultUrl: 'https://github.com' },
+                    { id: 'spotify', name: 'Spotify', icon: '🎵', defaultUrl: 'https://open.spotify.com' },
+                    { id: 'notion', name: 'Notion', icon: '📝', defaultUrl: 'https://notion.so' },
+                    { id: 'slack', name: 'Slack', icon: '💬', defaultUrl: 'https://slack.com' }
+                ];
+
+                const dock = document.getElementById('dock');
+                // Clear existing apps (except user profile and settings)
+                dock.querySelectorAll('.app-icon').forEach(icon => icon.remove());
+
+                defaultApps.forEach(config => {
+                    // Create app data structure
+                    this.apps.set(config.id, {
+                        ...config,
+                        tabs: [],
+                        activeTabId: null
+                    });
+
+                    // Create dock icon
+                    const icon = document.createElement('div');
+                    icon.className = 'app-icon';
+                    icon.dataset.appId = config.id;
+                    icon.innerHTML = config.icon;
+                    icon.addEventListener('click', () => this.switchToApp(config.id));
+                    
+                    // Insert before settings icon
+                    const settingsIcon = document.getElementById('settingsIcon');
+                    dock.insertBefore(icon, settingsIcon);
+                });
+            }
+
+            async loadUserData() {
+                if (!supabase || !this.user) return;
+
+                try {
+                    const { data, error } = await supabase
+                        .from('user_sessions')
+                        .select('*')
+                        .eq('user_id', this.user.id)
+                        .single();
+
+                    if (error && error.code !== 'PGRST116') { // PGRST116 = no rows found
+                        console.error('Error loading user data:', error);
+                        return;
+                    }
+
+                    if (data && data.session_data) {
+                        this.loadSessionData(data.session_data);
+                    } else {
+                        this.initializeApps();
+                    }
+                } catch (error) {
+                    console.error('Error loading user data:', error);
+                    this.initializeApps();
+                }
+            }
+
+            loadLocalData() {
+                try {
+                    const savedData = localStorage.getItem('virtualDesktopSession');
+                    if (savedData) {
+                        this.loadSessionData(JSON.parse(savedData));
+                    }
+                } catch (error) {
+                    console.error('Error loading local data:', error);
+                }
+            }
+
+            loadSessionData(sessionData) {
+                if (sessionData.apps) {
+                    this.apps = new Map(Object.entries(sessionData.apps));
+                    this.renderApps();
+                }
+                
+                if (sessionData.currentApp) {
+                    this.switchToApp(sessionData.currentApp);
+                }
+                
+                if (sessionData.tabCounter) {
+                    this.tabCounter = sessionData.tabCounter;
+                }
+            }
+
+            renderApps() {
+                const dock = document.getElementById('dock');
+                // Clear existing app icons
+                dock.querySelectorAll('.app-icon').forEach(icon => icon.remove());
+
+                this.apps.forEach((app, appId) => {
+                    const icon = document.createElement('div');
+                    icon.className = 'app-icon';
+                    icon.dataset.appId = appId;
+                    icon.innerHTML = app.icon;
+                    icon.addEventListener('click', () => this.switchToApp(appId));
+                    
+                    // Insert before settings icon
+                    const settingsIcon = document.getElementById('settingsIcon');
+                    dock.insertBefore(icon, settingsIcon);
+                });
+            }
+
+            async saveUserData() {
+                if (!this.user) {
+                    // Save locally if no user
+                    this.saveLocalData();
+                    return;
+                }
+
+                if (!supabase) return;
+
+                // Debounce saves
+                if (this.saveTimeout) {
+                    clearTimeout(this.saveTimeout);
+                }
+
+                this.saveTimeout = setTimeout(async () => {
+                    try {
+                        this.showSyncStatus();
+                        
+                        const sessionData = {
+                            apps: Object.fromEntries(this.apps),
+                            currentApp: this.currentApp,
+                            tabCounter: this.tabCounter,
+                            lastUpdated: new Date().toISOString()
+                        };
+
+                        const { error } = await supabase
+                            .from('user_sessions')
+                            .upsert({
+                                user_id: this.user.id,
+                                session_data: sessionData,
+                                updated_at: new Date().toISOString()
+                            });
+
+                        if (error) {
+                            console.error('Error saving user data:', error);
+                        }
+                        
+                        this.hideSyncStatus();
+                    } catch (error) {
+                        console.error('Error saving user data:', error);
+                    }
+                }, 1000); // Save after 1 second of inactivity
+            }
+
+            saveLocalData() {
+                try {
+                    const sessionData = {
+                        apps: Object.fromEntries(this.apps),
+                        currentApp: this.currentApp,
+                        tabCounter: this.tabCounter,
+                        lastUpdated: new Date().toISOString()
+                    };
+                    
+                    localStorage.setItem('virtualDesktopSession', JSON.stringify(sessionData));
+                } catch (error) {
+                    console.error('Error saving local data:', error);
+                }
+            }
+
+            showSyncStatus() {
+                document.getElementById('syncStatus').classList.add('show');
+            }
+
+            hideSyncStatus() {
+                setTimeout(() => {
+                    document.getElementById('syncStatus').classList.remove('show');
+                }, 1000);
+            }
+
+            switchToApp(appId) {
+                // Update dock visual state
+                document.querySelectorAll('.app-icon').forEach(icon => {
+                    icon.classList.remove('active');
+                });
+                document.querySelector(`[data-app-id="${appId}"]`).classList.add('active');
+
+                this.currentApp = appId;
+                const app = this.apps.get(appId);
+
+                // Create first tab if app has none
+                if (app.tabs.length === 0) {
+                    this.createTab(appId, app.defaultUrl);
+                } else {
+                    this.renderTabs(appId);
+                    this.showTab(app.activeTabId);
+                }
+
+                this.saveUserData();
+            }
+
+            createTab(appId, url = null) {
+                const tabId = `tab-${++this.tabCounter}`;
+                const app = this.apps.get(appId) || this.getOrCreateGenericApp();
+                
+                const tab = {
+                    id: tabId,
+                    title: url ? this.getTitleFromUrl(url) : 'New Tab',
+                    url: url || 'about:blank',
+                    appId: appId
+                };
+
+                app.tabs.push(tab);
+                app.activeTabId = tabId;
+
+                // Create iframe container
+                const container = document.createElement('div');
+                container.className = 'iframe-container';
+                container.id = tabId;
+                
+                if (url && url !== 'about:blank') {
+                    container.innerHTML = `<iframe src="${url}" sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-top-navigation"></iframe>`;
+                }
+
+                document.getElementById('contentArea').appendChild(container);
+
+                this.renderTabs(appId);
+                this.showTab(tabId);
+                this.saveUserData();
+            }
+
+            renderTabs(appId) {
+                const app = this.apps.get(appId);
+                const tabBar = document.getElementById('tabBar');
+                
+                // Clear existing tabs
+                tabBar.querySelectorAll('.tab').forEach(tab => tab.remove());
+
+                // Add tabs for current app
+                app.tabs.forEach(tab => {
+                    const tabElement = document.createElement('div');
+                    tabElement.className = 'tab';
+                    tabElement.dataset.tabId = tab.id;
+                    
+                    if (tab.id === app.activeTabId) {
+                        tabElement.classList.add('active');
+                    }
+
+                    tabElement.innerHTML = `
+                        <span>${tab.title}</span>
+                        <div class="tab-close" onclick="event.stopPropagation(); virtualDesktop.closeTab('${tab.id}', '${appId}')">×</div>
+                    `;
+
+                    tabElement.addEventListener('click', () => this.showTab(tab.id));
+                    tabBar.appendChild(tabElement);
+                });
+            }
+
+            showTab(tabId) {
+                // Hide all iframe containers
+                document.querySelectorAll('.iframe-container').forEach(container => {
+                    container.classList.remove('active');
+                });
+
+                // Hide welcome screen
+                document.querySelector('.welcome-screen').style.display = 'none';
+
+                // Show selected tab
+                const container = document.getElementById(tabId);
+                if (container) {
+                    container.classList.add('active');
+                }
+
+                // Update tab visual state
+                document.querySelectorAll('.tab').forEach(tab => {
+                    tab.classList.remove('active');
+                });
+                document.querySelector(`[data-tab-id="${tabId}"]`)?.classList.add('active');
+
+                // Update current tab reference
+                if (this.currentApp) {
+                    this.apps.get(this.currentApp).activeTabId = tabId;
+                }
+
+                // Update URL bar
+                const app = this.apps.get(this.currentApp);
+                const tab = app?.tabs.find(t => t.id === tabId);
+                if (tab) {
+                    document.getElementById('urlInput').value = tab.url;
+                }
+
+                this.saveUserData();
+            }
+
+            closeTab(tabId, appId) {
+                const app = this.apps.get(appId);
+                const tabIndex = app.tabs.findIndex(tab => tab.id === tabId);
+                
+                if (tabIndex !== -1) {
+                    app.tabs.splice(tabIndex, 1);
+                    document.getElementById(tabId)?.remove();
+
+                    if (app.activeTabId === tabId) {
+                        if (app.tabs.length > 0) {
+                            const newActiveTab = app.tabs[Math.max(0, tabIndex - 1)];
+                            this.showTab(newActiveTab.id);
+                        } else {
+                            document.querySelector('.welcome-screen').style.display = 'flex';
+                        }
+                    }
+
+                    this.renderTabs(appId);
+                    this.saveUserData();
+                }
+            }
+
+            navigateToUrl(url) {
+                if (!url.startsWith('http')) {
+                    url = url.includes('.') ? `https://${url}` : `https://www.google.com/search?q=${encodeURIComponent(url)}`;
+                }
+
+                const app = this.apps.get(this.currentApp);
+                if (app && app.activeTabId) {
+                    const tab = app.tabs.find(t => t.id === app.activeTabId);
+                    if (tab) {
+                        tab.url = url;
+                        tab.title = this.getTitleFromUrl(url);
+                        
+                        const container = document.getElementById(app.activeTabId);
+                        container.innerHTML = `<iframe src="${url}" sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-top-navigation"></iframe>`;
+                        
+                        this.renderTabs(this.currentApp);
+                        this.saveUserData();
+                    }
+                }
+            }
+
+            navigateBack() {
+                const iframe = document.querySelector('.iframe-container.active iframe');
+                if (iframe && iframe.contentWindow) {
+                    iframe.contentWindow.history.back();
+                }
+            }
+
+            navigateForward() {
+                const iframe = document.querySelector('.iframe-container.active iframe');
+                if (iframe && iframe.contentWindow) {
+                    iframe.contentWindow.history.forward();
+                }
+            }
+
+            refresh() {
+                const iframe = document.querySelector('.iframe-container.active iframe');
+                if (iframe) {
+                    iframe.src = iframe.src;
+                }
+            }
+
+            getTitleFromUrl(url) {
+                try {
+                    const urlObj = new URL(url);
+                    return urlObj.hostname.replace('www.', '');
+                } catch {
+                    return url.substring(0, 20) + '...';
+                }
+            }
+
+            getOrCreateGenericApp() {
+                if (!this.apps.has('browser')) {
+                    this.apps.set('browser', {
+                        id: 'browser',
+                        name: 'Browser',
+                        icon: '🌐',
+                        tabs: [],
+                        activeTabId: null,
+                        defaultUrl: 'about:blank'
+                    });
+                }
+                return this.apps.get('browser');
+            }
+
+            openSettings() {
+                const modal = document.getElementById('settingsModal');
+                const container = document.getElementById('appSettings');
+                
+                container.innerHTML = '';
+                
+                this.apps.forEach((app, appId) => {
+                    const setting = document.createElement('div');
+                    setting.className = 'app-setting';
+                    setting.innerHTML = `
+                        <span>${app.icon}</span>
+                        <input type="text" value="${app.defaultUrl}" data-app-id="${appId}" placeholder="Default URL for ${app.name}">
+                    `;
+                    container.appendChild(setting);
+                });
+                
+                modal.style.display = 'flex';
+            }
+
+            closeSettings() {
+                document.getElementById('settingsModal').style.display = 'none';
+            }
+
+            saveSettings() {
+                const inputs = document.querySelectorAll('#appSettings input');
+                
+                inputs.forEach(input => {
+                    const appId = input.dataset.appId;
+                    const app = this.apps.get(appId);
+                    if (app) {
+                        app.defaultUrl = input.value;
+                    }
+                });
+
+                this.closeSettings();
+                this.saveUserData();
+            }
+
+            exportSettings() {
+                const sessionData = {
+                    apps: Object.fromEntries(this.apps),
+                    currentApp: this.currentApp,
+                    tabCounter: this.tabCounter,
+                    exportedAt: new Date().toISOString()
+                };
+
+                const blob = new Blob([JSON.stringify(sessionData, null, 2)], {
+                    type: 'application/json'
+                });
+
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'virtual-desktop-settings.json';
+                a.click();
+                URL.revokeObjectURL(url);
+            }
+
+            importSettings(event) {
+                const file = event.target.files[0];
+                if (!file) return;
+
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const sessionData = JSON.parse(e.target.result);
+                        this.loadSessionData(sessionData);
+                        this.saveUserData();
+                        alert('Settings imported successfully!');
+                    } catch (error) {
+                        alert('Error importing settings: ' + error.message);
+                    }
+                };
+                reader.readAsText(file);
+            }
+        }
+
+        // Initialize the virtual desktop
+        const virtualDesktop = new VirtualDesktop();
+    </script>
+</body>
+</html>
