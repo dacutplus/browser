@@ -742,7 +742,8 @@
         const ADMIN_PASSWORD = 'admin123';
 
         // Initialize Supabase client
-        const supabase = supabase.createClient ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+        const supabaseClient = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+        console.log('Supabase client initialized:', !!supabaseClient);
 
         class VirtualDesktop {
             constructor() {
@@ -766,17 +767,53 @@
             }
 
             async loadUsers() {
-                if (!supabase) {
+                console.log('Loading users...');
+                if (!supabaseClient) {
+                    console.log('No Supabase client, using offline mode');
                     // Offline mode - load from localStorage
-                    this.currentUser = user;
-                    this.showDesktop();
+                    this.loadOfflineUsers();
+                    return;
+                }
 
+                try {
+                    console.log('Fetching users from Supabase...');
+                    const { data, error } = await supabaseClient
+                        .from('users')
+                        .select('*');
+
+                    if (error) throw error;
+
+                    console.log('Users loaded from Supabase:', data);
+                    data.forEach(user => {
+                        this.users.set(user.username, user);
+                    });
+                    
+                    // If no users exist, create a default admin user
+                    if (data.length === 0) {
+                        console.log('No users found, creating default admin user');
+                        const defaultAdmin = {
+                            username: 'admin',
+                            password: 'admin123',
+                            display_name: 'Administrator',
+                            custom_urls: {},
+                            created_at: new Date().toISOString(),
+                            updated_at: new Date().toISOString()
+                        };
+                        this.users.set('admin', defaultAdmin);
+                        
+                        // Save to database
+                        if (supabaseClient) {
+                            try {
+                                await supabaseClient.from('users').insert(defaultAdmin);
+                                console.log('Default admin user created in database');
+                            } catch (error) {
+                                console.error('Error creating default admin user:', error);
+                            }
+                        }
+                    }
                 } catch (error) {
-                    errorDiv.textContent = error.message;
-                    errorDiv.style.display = 'block';
-                } finally {
-                    submitBtn.disabled = false;
-                    submitBtn.textContent = 'Sign In';
+                    console.error('Error loading users:', error);
+                    this.loadOfflineUsers();
                 }
             }
 
@@ -804,6 +841,7 @@
             }
 
             showAdmin() {
+                console.log('Showing admin panel');
                 document.getElementById('adminPanel').style.display = 'block';
                 this.renderUserGrid();
                 this.renderAppConfigs();
@@ -1002,7 +1040,7 @@
                         }));
 
                         for (const config of configs) {
-                            await supabase.from('app_configs').upsert(config);
+                            await supabaseClient.from('app_configs').upsert(config);
                         }
                     } catch (error) {
                         console.error('Error saving app configs:', error);
@@ -1013,7 +1051,7 @@
             }
 
             async saveUsers() {
-                if (supabase) {
+                if (supabaseClient) {
                     try {
                         const userArray = Array.from(this.users.entries()).map(([username, user]) => ({
                             username,
@@ -1025,7 +1063,7 @@
                         }));
 
                         for (const user of userArray) {
-                            await supabase.from('users').upsert(user);
+                            await supabaseClient.from('users').upsert(user);
                         }
                     } catch (error) {
                         console.error('Error saving users:', error);
@@ -1060,10 +1098,10 @@
             }
 
             async loadUserSession() {
-                if (!supabase || !this.currentUser) return;
+                if (!supabaseClient || !this.currentUser) return;
 
                 try {
-                    const { data, error } = await supabase
+                    const { data, error } = await supabaseClient
                         .from('user_sessions')
                         .select('*')
                         .eq('username', this.currentUser.username)
@@ -1116,7 +1154,7 @@
             }
 
             async saveUserSession() {
-                if (!supabase || !this.currentUser) return;
+                if (!supabaseClient || !this.currentUser) return;
 
                 // Debounce saves
                 if (this.saveTimeout) {
@@ -1144,7 +1182,7 @@
                             lastUpdated: new Date().toISOString()
                         };
 
-                        const { error } = await supabase
+                        const { error } = await supabaseClient
                             .from('user_sessions')
                             .upsert({
                                 username: this.currentUser.username,
@@ -1517,6 +1555,8 @@
                 const submitBtn = document.getElementById('authSubmitBtn');
                 const errorDiv = document.getElementById('authError');
 
+                console.log('Login attempt:', { username, password, adminUsername: ADMIN_USERNAME, adminPassword: ADMIN_PASSWORD });
+
                 submitBtn.disabled = true;
                 submitBtn.textContent = 'Signing in...';
                 errorDiv.style.display = 'none';
@@ -1524,6 +1564,7 @@
                 try {
                     // Check if admin
                     if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
+                        console.log('Admin login successful');
                         this.isAdmin = true;
                         this.showAdmin();
                         return;
@@ -1538,6 +1579,7 @@
                     this.currentUser = user;
                     this.showDesktop();
                 } catch (error) {
+                    console.error('Login error:', error);
                     errorDiv.textContent = error.message;
                     errorDiv.style.display = 'block';
                 } finally {
